@@ -86,7 +86,8 @@ def parse_and_sort_files(file_data, mode='All'):
         series = sorted(series, key=lambda x: (x['episode'], x['filename'].lower()))
     else:  # 'All' mode
         # Season -> Quality -> Episode
-        series = sorted(series, key=lambda x: (x['season'], x['quality_order'], x['episode']))
+        # Season -> Episode -> Quality ✅
+        series = sorted(series, key=lambda x: (x['season'], x['episode'], x['quality_order']))
     
     # Non-series files sorted by filename and quality
     non_series = sorted(non_series, key=lambda x: (x['filename'].lower(), x['quality_order']))
@@ -573,7 +574,7 @@ async def leaderboard_cmd(client: Client, message: Message):
 
 # ==================== FILE COLLECTOR ====================
 
-@Client.on_message(filters.private & (filters.document | filters.video | filters.text) & ~filters.command(["ssequence", "esequence", "mode", "cancel", "add_dump", "rem_dump", "dump_info", "leaderboard"]))
+@Client.on_message(filters.private & (filters.document | filters.video) & ~filters.command(["ssequence", "esequence", "mode", "cancel", "add_dump", "rem_dump", "dump_info", "leaderboard"]))
 @check_ban
 @check_fsub
 async def collect_files(client: Client, message: Message):
