@@ -1,14 +1,14 @@
 import os
 from os import environ
 
-TG_BOT_TOKEN = os.environ.get("BOT_TOKEN", "756596:AAF")
-APP_ID = int(os.environ.get("APP_ID", "2355"))
-API_HASH = os.environ.get("API_HASH", "4vsavkjahvsdhk")
-OWNER_ID = int(os.environ.get("OWNER_ID", "5741918628"))
+TG_BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+APP_ID = int(os.environ.get("APP_ID", ""))
+API_HASH = os.environ.get("API_HASH", "")
+OWNER_ID = int(os.environ.get("OWNER_ID", ""))
 PORT = os.environ.get("PORT", "8080")
-DB_URL = os.environ.get("DB_URI", "mongodb+srv://odb.net/?retryWrites=true&w=majority&appName=Cluster0")
-DB_NAME = os.environ.get("DB_NAME", "Rex_sequencebott")
-BOT_USERNAME = os.environ.get("BOT_USERNAME", "S_QV_Sbot")
+DB_URL = os.environ.get("DB_URI", "")
+DB_NAME = os.environ.get("DB_NAME", "")
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "VoidxTora")
 FSUB_PIC = os.environ.get("FSUB_PIC", "https://ibb.co/FL66q5G9")
 START_PIC =os.environ.get("START_PIC", "https://ibb.co/FL66q5G9")
 START_MSG = os.environ.get("START_MSG", "<b>Bᴀᴋᴀᴀᴀ...!!!{mention}</b> \n<blockquote><b><i>Iᴀᴍ ᴀ ᴀᴅᴠᴀɴᴄᴇ sᴇǫᴜᴇɴᴄᴇ ʙᴏᴛ ᴡɪᴛʜ sᴏᴍᴇ ᴀᴅᴠᴀɴᴄᴇ ғᴇᴀᴛᴜʀᴇs. I ᴄᴀɴ sᴇǫᴜᴇɴᴄᴇ ʏᴏᴜʀ ғɪʟᴇs ᴇᴀsɪʟʏ ɪɴ ᴀ sᴇᴄᴏɴᴅ...!!</i></b></blockquote>")
