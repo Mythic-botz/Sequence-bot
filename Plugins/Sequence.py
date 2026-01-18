@@ -8,13 +8,13 @@ from pyrogram.enums import ParseMode
 from datetime import datetime
 
 from config import *
-from Plugins.callbacks import *
+from Plugins.callbacks import MODES  # ← Import MODES from callbacks.py (recommended)
 from Database.database import Seishiro
 from Plugins.start import *
 
 logger = logging.getLogger(__name__)
 
-user_sessions = {}
+user_sessions = {}          # Only for active file lists (mode is now from DB)
 pending_notifications = {}  # user_id → {'timer': asyncio.Task, 'last_count': int}
 
 # ==================== FLOODWAIT HANDLER ====================
@@ -69,7 +69,7 @@ def parse_and_sort_files(file_data, mode='All'):
     • Season      → season only
     • Episode     → episode only
     • All         → Season → Episode → Quality     (classic)
-    • AllSQE      → Season → Quality → Episode     (new!)
+    • AllSQE      → Season → Quality → Episode
     """
     series, non_series = [], []
 
@@ -92,12 +92,14 @@ def parse_and_sort_files(file_data, mode='All'):
 
     return series, non_series
 
+
 # ==================== EXCLUDED COMMANDS ====================
 
 EXCLUDED_COMMANDS = [
     "ssequence", "esequence", "mode", "cancel",
     "add_dump", "rem_dump", "dump_info", "leaderboard"
 ]
+
 
 # ==================== FILE COLLECTOR ====================
 
@@ -112,7 +114,6 @@ async def collect_files(client: Client, message: Message):
     try:
         user_id = message.from_user.id
 
-        # If no active sequence session
         if user_id not in user_sessions:
             if message.document or message.video or message.audio:
                 await handle_floodwait(
@@ -131,7 +132,6 @@ async def collect_files(client: Client, message: Message):
                 files.append({'filename': line, 'format': 'text'})
                 added_this_time += 1
 
-        # Documents
         if message.document:
             files.append({
                 'filename': message.document.file_name,
@@ -140,7 +140,6 @@ async def collect_files(client: Client, message: Message):
             })
             added_this_time += 1
 
-        # Videos
         if message.video:
             filename = message.video.file_name or \
                        (message.caption if message.caption else f"video_{message.video.file_unique_id}.mp4")
@@ -151,7 +150,6 @@ async def collect_files(client: Client, message: Message):
             })
             added_this_time += 1
 
-        # Audio (optional - remove if not needed)
         if message.audio:
             filename = message.audio.file_name or f"audio_{message.audio.file_unique_id}"
             files.append({
@@ -166,24 +164,19 @@ async def collect_files(client: Client, message: Message):
 
         current_total = len(files)
 
-        # ─── DEBOUNCE LOGIC ───────────────────────────────────────
+        # Debounce notification
         if user_id in pending_notifications:
             old_task = pending_notifications[user_id].get('timer')
             if old_task and not old_task.done():
                 old_task.cancel()
 
         async def send_debounced_notification():
-            await asyncio.sleep(2.3)  # debounce window
+            await asyncio.sleep(2.3)
 
             if user_id in user_sessions and len(user_sessions[user_id]['files']) == current_total:
-                current_mode = session.get('mode', 'All')
-                mode_display = {
-                    'Quality': 'Quality only',
-                    'All': 'All (S→E→Q)',
-                    'AllSQE': 'All [S→Q→E]',
-                    'Episode': 'Episode only',
-                    'Season': 'Season only'
-                }.get(current_mode, current_mode)
+                # Always read from database
+                mode_key = await Seishiro.get_sequence_mode(user_id) or "All"
+                mode_display = MODES.get(mode_key, MODES["All"])["button"]
 
                 text = (
                     f"✅ <b>{added_this_time} file(s) added to sequence</b>\n"
@@ -218,13 +211,19 @@ async def collect_files(client: Client, message: Message):
 async def arrange_cmd(client: Client, message: Message):
     try:
         user_id = message.from_user.id
-        user_sessions[user_id] = {'files': [], 'mode': 'All'}
+        
+        # Initialize session - files only (mode from DB)
+        user_sessions[user_id] = {'files': []}
+
+        # Show current mode on start
+        mode_key = await Seishiro.get_sequence_mode(user_id) or "All"
+        mode_name = MODES.get(mode_key, MODES["All"])["button"]
 
         await handle_floodwait(
             message.reply_text,
-            "<b><i>Sᴇǫᴜᴇɴᴄᴇ sᴛᴀʀᴛᴇᴅ</i></b>\n\n"
+            f"<b><i>Sᴇǫᴜᴇɴᴄᴇ sᴛᴀʀᴛᴇᴅ</i></b>  (Current mode: {mode_name})\n\n"
             "<i>Nᴏᴡ sᴇɴᴅ ʏᴏᴜʀ ғɪʟᴇ(s) ғᴏʀ sᴇǫᴜᴇɴᴄᴇ.</i>\n"
-            "• Usᴇ /mode ᴛᴏ ᴄʜᴀɴɢᴇ ᴛʜᴇ ᴍᴏᴅᴇ ᴏғ sᴇǫᴜᴇɴᴄɪɴɢ."
+            "• Usᴇ /mode ᴛᴏ ᴄʜᴀɴɢᴇ ᴛʜᴇ sᴏʀᴛɪɴɢ ᴍᴏᴅᴇ"
         )
     except Exception as e:
         logger.error(f"Error in ssequence command: {e}")
@@ -240,6 +239,7 @@ async def mode_cmd(client: Client, message: Message):
     try:
         user_id = message.from_user.id
         current = await Seishiro.get_sequence_mode(user_id) or "All"
+        current_name = MODES.get(current, MODES["All"])["button"]
 
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton(f"Qᴜᴀʟɪᴛʏ{' ✅' if current == 'Quality' else ''}", callback_data="mode_Quality"),
@@ -251,7 +251,7 @@ async def mode_cmd(client: Client, message: Message):
 
         await handle_floodwait(
             message.reply_text,
-            f"<b><u>Sᴇʟᴇᴄᴛ Sᴏʀᴛɪɴɢ Mᴏᴅᴇ</u></b> (Current: {current})\n\n"
+            f"<b><u>Sᴇʟᴇᴄᴛ Sᴏʀᴛɪɴɢ Mᴏᴅᴇ</u></b> (Current: {current_name})\n\n"
             "<b>Available modes:</b>\n"
             "• <b>Qᴜᴀʟɪᴛʏ</b>: Sort by quality only\n"
             "• <b>Aʟʟ (S→E→Q)</b>: Season → Episode → Quality\n"
@@ -267,7 +267,7 @@ async def mode_cmd(client: Client, message: Message):
         await handle_floodwait(message.reply_text, "❌ Aɴ ᴇʀʀᴏʀ ᴏᴄᴄᴜʀʀᴇᴅ. Pʟᴇᴀsᴇ ᴛʀʏ ᴀɢᴀɪɴ.")
 
 
-# ==================== ESEQUENCE ====================
+# ==================== END SEQUENCE / SEND FILES ====================
 
 @Client.on_message(filters.command("esequence") & filters.private)
 @check_ban
@@ -277,7 +277,7 @@ async def end_cmd(client: Client, message: Message):
         user_id = message.from_user.id
         session = user_sessions.get(user_id)
 
-        if not session or not session['files']:
+        if not session or not session.get('files'):
             await handle_floodwait(message.reply_text, "Nᴏ ғɪʟᴇs ᴡᴇʀᴇ sᴇɴᴛ ғᴏʀ sᴇǫᴜᴇɴᴄᴇ")
             return
 
@@ -288,149 +288,93 @@ async def end_cmd(client: Client, message: Message):
                 task.cancel()
             pending_notifications.pop(user_id, None)
 
+        # Read sorting mode from database
+        mode_key = await Seishiro.get_sequence_mode(user_id) or "All"
+
         dump_channel = await Seishiro.get_dump_channel(user_id)
 
-        series, non_series = parse_and_sort_files(session['files'], session.get('mode', 'All'))
+        series, non_series = parse_and_sort_files(session['files'], mode_key)
         total_files = len(series) + len(non_series)
         all_sorted_files = series + non_series
 
         is_dump_mode = bool(dump_channel)
 
         if is_dump_mode:
+            target_chat = dump_channel
             await handle_floodwait(
                 message.reply_text,
                 f"📤 Sᴇɴᴅɪɴɢ {total_files} ғɪʟᴇs ᴛᴏ ʏᴏᴜʀ ᴅᴜᴍᴘ ᴄʜᴀɴɴᴇʟ...\n"
                 f"Cʜᴀɴɴᴇʟ: <code>{dump_channel}</code>",
                 parse_mode=ParseMode.HTML
             )
-            target_chat = dump_channel
         else:
+            target_chat = message.chat.id
             await handle_floodwait(
                 message.reply_text,
                 f"📤 Sᴇɴᴅɪɴɢ {total_files} ғɪʟᴇs ɪɴ sᴇǫᴜᴇɴᴄᴇ ᴛᴏ ᴘʀɪᴠᴀᴛᴇ ᴄʜᴀᴛ...",
                 parse_mode=ParseMode.HTML
             )
-            target_chat = message.chat.id
 
         sent_count = 0
         failed_files = []
 
-        try:
-            for file_info in all_sorted_files:
-                try:
-                    file_id = file_info.get('file_id')
-                    filename = file_info.get('filename', 'Unknown')
-                    file_format = file_info.get('format')
+        for file_info in all_sorted_files:
+            try:
+                file_id = file_info.get('file_id')
+                filename = file_info.get('filename', 'Unknown')
+                file_format = file_info.get('format')
 
-                    if file_id and file_format in ['document', 'video', 'audio']:
-                        if file_format == 'document':
-                            await handle_floodwait(
-                                client.send_document,
-                                chat_id=target_chat,
-                                document=file_id,
-                                caption=filename
-                            )
-                        elif file_format == 'video':
-                            await handle_floodwait(
-                                client.send_video,
-                                chat_id=target_chat,
-                                video=file_id,
-                                caption=filename
-                            )
-                        elif file_format == 'audio':
-                            await handle_floodwait(
-                                client.send_audio,
-                                chat_id=target_chat,
-                                audio=file_id,
-                                caption=filename
-                            )
-                    else:
+                if file_id and file_format in ['document', 'video', 'audio']:
+                    if file_format == 'document':
                         await handle_floodwait(
-                            client.send_message,
+                            client.send_document,
                             chat_id=target_chat,
-                            text=f"📄 {filename}"
+                            document=file_id,
+                            caption=filename
                         )
+                    elif file_format == 'video':
+                        await handle_floodwait(
+                            client.send_video,
+                            chat_id=target_chat,
+                            video=file_id,
+                            caption=filename
+                        )
+                    elif file_format == 'audio':
+                        await handle_floodwait(
+                            client.send_audio,
+                            chat_id=target_chat,
+                            audio=file_id,
+                            caption=filename
+                        )
+                else:
+                    await handle_floodwait(
+                        client.send_message,
+                        chat_id=target_chat,
+                        text=f"📄 {filename}"
+                    )
 
-                    sent_count += 1
+                sent_count += 1
 
-                except Exception as file_error:
-                    logger.error(f"Failed to send file {filename}: {file_error}")
-                    failed_files.append(filename)
-                    continue
+            except Exception as file_error:
+                logger.error(f"Failed to send file {filename}: {file_error}")
+                failed_files.append(filename)
+                continue
 
-            completion_msg = f"✅ Sᴜᴄᴄᴇssғᴜʟʟʏ sᴇɴᴛ {sent_count}/{total_files} ғɪʟᴇs ɪɴ sᴇǫᴜᴇɴᴄᴇ"
+        completion_msg = f"✅ Sᴜᴄᴄᴇssғᴜʟʟʏ sᴇɴᴛ {sent_count}/{total_files} ғɪʟᴇs"
 
-            if is_dump_mode:
-                completion_msg += " ᴛᴏ ʏᴏᴜʀ ᴅᴜᴍᴘ ᴄʜᴀɴɴᴇʟ!"
-            else:
-                completion_msg += "!"
+        if is_dump_mode:
+            completion_msg += " ᴛᴏ ʏᴏᴜʀ ᴅᴜᴍᴘ ᴄʜᴀɴɴᴇʟ!"
+        else:
+            completion_msg += "!"
 
-            if failed_files:
-                completion_msg += f"\n\n⚠️ Fᴀɪʟᴇᴅ: {len(failed_files)} ғɪʟᴇs"
-                if len(failed_files) <= 5:
-                    completion_msg += "\n" + "\n".join([f"• {f}" for f in failed_files])
+        if failed_files:
+            completion_msg += f"\n\n⚠️ Fᴀɪʟᴇᴅ: {len(failed_files)} ғɪʟᴇs"
+            if len(failed_files) <= 5:
+                completion_msg += "\n" + "\n".join([f"• {f}" for f in failed_files])
 
-            await handle_floodwait(message.reply_text, completion_msg)
+        await handle_floodwait(message.reply_text, completion_msg)
 
-        except Exception as send_error:
-            logger.error(f"Error during file sending: {send_error}")
-
-            if is_dump_mode:
-                await handle_floodwait(
-                    message.reply_text,
-                    f"❌ Eʀʀᴏʀ sᴇɴᴅɪɴɢ ᴛᴏ ᴅᴜᴍᴘ ᴄʜᴀɴɴᴇʟ!\n"
-                    f"Mᴀᴋᴇ sᴜʀᴇ ʙᴏᴛ ɪs ᴀᴅᴍɪɴ ɪɴ ᴛʜᴇ ᴄʜᴀɴɴᴇʟ.\n\n"
-                    f"Sᴇɴᴅɪɴɢ ᴛᴏ ᴘʀɪᴠᴀᴛᴇ ᴄʜᴀᴛ ɪɴsᴛᴇᴀᴅ..."
-                )
-
-                sent_count = 0
-                for file_info in all_sorted_files:
-                    try:
-                        file_id = file_info.get('file_id')
-                        filename = file_info.get('filename', 'Unknown')
-                        file_format = file_info.get('format')
-
-                        if file_id and file_format in ['document', 'video', 'audio']:
-                            if file_format == 'document':
-                                await handle_floodwait(
-                                    client.send_document,
-                                    chat_id=message.chat.id,
-                                    document=file_id,
-                                    caption=filename
-                                )
-                            elif file_format == 'video':
-                                await handle_floodwait(
-                                    client.send_video,
-                                    chat_id=message.chat.id,
-                                    video=file_id,
-                                    caption=filename
-                                )
-                            elif file_format == 'audio':
-                                await handle_floodwait(
-                                    client.send_audio,
-                                    chat_id=message.chat.id,
-                                    audio=file_id,
-                                    caption=filename
-                                )
-                        else:
-                            await handle_floodwait(
-                                client.send_message,
-                                chat_id=message.chat.id,
-                                text=f"📄 {filename}"
-                            )
-
-                        sent_count += 1
-                    except Exception as e:
-                        logger.error(f"Failed to send file in fallback: {e}")
-                        continue
-
-                await handle_floodwait(
-                    message.reply_text,
-                    f"✅ Sᴇɴᴛ {sent_count}/{total_files} ғɪʟᴇs ᴛᴏ ᴘʀɪᴠᴀᴛᴇ ᴄʜᴀᴛ!"
-                )
-            else:
-                raise send_error
-
+        # Update user stats
         await Seishiro.col.update_one(
             {"_id": int(user_id)},
             {
@@ -442,6 +386,7 @@ async def end_cmd(client: Client, message: Message):
             }
         )
 
+        # Cleanup session
         if user_id in user_sessions:
             del user_sessions[user_id]
 
@@ -527,7 +472,7 @@ async def add_dump_cmd(client: Client, message: Message):
                 client.send_message,
                 chat_id=channel_id,
                 text="✅ Dump channel connected successfully!"
-                        )
+            )
             await asyncio.sleep(2)
             await test_msg.delete()
 
