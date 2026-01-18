@@ -93,10 +93,17 @@ def parse_and_sort_files(file_data, mode='All'):
 
 # ==================== COMMANDS ====================
 
-@Client.on_message(filters.command("ssequence") & filters.private)
+@Client.on_message(
+    filters.private &
+    (filters.document | filters.video | filters.audio | (filters.text & ~filters.command)) &
+    ~filters.command([
+        "ssequence", "esequence", "mode", "cancel",
+        "add_dump", "rem_dump", "dump_info", "leaderboard"
+    ])
+)
 @check_ban
 @check_fsub
-async def arrange_cmd(client: Client, message: Message):
+async def collect_files(client: Client, message: Message):
     try:
         user_id = message.from_user.id
         user_sessions[user_id] = {'files': [], 'mode': 'All'}
