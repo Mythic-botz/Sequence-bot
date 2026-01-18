@@ -256,6 +256,6 @@ async def settings_callback(client: Client, callback_query: CallbackQuery):
             pass
 
     # ─── General error handling ───────────────────────────────
-    except Exception as e:
-        print(f"Error in callback handler: {e}")
-        await callback_query.answer("An error occurred. Please try again.", show_alert=True)
+        except Exception as e:
+            print(f"Error in callback handler: {e}")
+            await callback_query.answer("An error occurred. Please try again.", show_alert=True)
