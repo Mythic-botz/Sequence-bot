@@ -81,15 +81,15 @@ async def settings_callback(client: Client, callback_query: CallbackQuery):
             # Save selected mode
             await Seishiro.set_sequence_mode(user_id, mode_key)
 
-            # Optional: update active session
-             try:
-                 from Plugins.sequence import user_sessions
-                 if user_id in user_sessions:
-                     user_sessions[user_id]['mode'] = mode_key
-             except ImportError:
-                 pass
+            # Optional: update active session if available
+            try:
+                from Plugins.sequence import user_sessions
+                if user_id in user_sessions:
+                    user_sessions[user_id]['mode'] = mode_key
+            except ImportError:
+                pass
 
-             Show feedback
+            # Show feedback
             await callback_query.answer(MODES[mode_key]["answer"])
 
             # Build updated message
@@ -124,12 +124,14 @@ async def settings_callback(client: Client, callback_query: CallbackQuery):
 
         # ─── Other existing callbacks ──────────────────────────────
         elif data == "about":
-            user = await client.get_users(OWNER_ID)
+            user = await client.get_users(OWNER_ID)  # Make sure OWNER_ID is defined somewhere
             await callback_query.edit_message_media(
                 InputMediaPhoto("https://envs.sh/Wdj.jpg", ABOUT_TXT),
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("• back", callback_data="start"),
-                     InlineKeyboardButton("close •", callback_data="close")]
+                    [
+                        InlineKeyboardButton("• back", callback_data="start"),
+                        InlineKeyboardButton("close •", callback_data="close")
+                    ]
                 ])
             )
 
@@ -146,8 +148,10 @@ async def settings_callback(client: Client, callback_query: CallbackQuery):
                     )
                 ),
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("• back", callback_data="start"),
-                     InlineKeyboardButton("close •", callback_data="close")]
+                    [
+                        InlineKeyboardButton("• back", callback_data="start"),
+                        InlineKeyboardButton("close •", callback_data="close")
+                    ]
                 ])
             )
 
@@ -254,7 +258,7 @@ async def settings_callback(client: Client, callback_query: CallbackQuery):
             await callback_query.message.delete()
             try:
                 await callback_query.message.reply_to_message.delete()
-            except:
+            except Exception:
                 pass
 
     except Exception as e:
