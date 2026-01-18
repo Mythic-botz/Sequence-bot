@@ -22,10 +22,10 @@ class Master:
         self.rqst_fsub_data = self.database['request_forcesub']
         self.rqst_fsub_Channel_data = self.database['request_forcesub_channel']
 
-        # New: Per-user sorting mode storage
+        # Per-user sorting mode storage
         self.sequence_mode = self.database['sequence_mode']
 
-        # Backward compatibility
+        # Backward compatibility alias
         self.col = self.user_data
 
     def new_user(self, id, username=None):
@@ -131,19 +131,31 @@ class Master:
     # ==================== SEQUENCE MODE (Sorting Preference) ====================
 
     async def get_sequence_mode(self, user_id: int) -> str:
-        """Get user's preferred sorting mode. Default: "All"."""
+        """
+        Get user's preferred sorting mode.
+        Default: "All"
+        """
         try:
             doc = await self.sequence_mode.find_one({"_id": int(user_id)})
-            if doc and doc.get("mode") in ["Quality", "All", "Episode", "Season"]:
-                return doc["mode"]
-            return "All"  # Default mode
+            if doc and "mode" in doc:
+                mode = doc["mode"]
+                # All currently supported modes
+                if mode in ["Quality", "All", "AllSQE", "Episode", "Season"]:
+                    return mode
+            return "All"  # Default when no document or invalid value
         except Exception as e:
             logging.error(f"Error getting sequence_mode for {user_id}: {e}")
             return "All"
 
     async def set_sequence_mode(self, user_id: int, mode: str) -> bool:
-        """Save user's sorting mode preference."""
-        if mode not in ["Quality", "All", "Episode", "Season"]:
+        """
+        Save user's sorting mode preference.
+        Supported modes: Quality, All, AllSQE, Episode, Season
+        """
+        allowed_modes = {"Quality", "All", "AllSQE", "Episode", "Season"}
+
+        if mode not in allowed_modes:
+            logging.warning(f"Attempted to set invalid sequence mode '{mode}' for user {user_id}")
             return False
 
         try:
