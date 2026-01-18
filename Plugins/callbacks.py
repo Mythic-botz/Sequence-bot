@@ -82,14 +82,14 @@ async def settings_callback(client: Client, callback_query: CallbackQuery):
             await Seishiro.set_sequence_mode(user_id, mode_key)
 
             # Optional: update active session
-            # try:
-            #     from Plugins.sequence import user_sessions
-            #     if user_id in user_sessions:
-            #         user_sessions[user_id]['mode'] = mode_key
-            # except ImportError:
-            #     pass
+             try:
+                 from Plugins.sequence import user_sessions
+                 if user_id in user_sessions:
+                     user_sessions[user_id]['mode'] = mode_key
+             except ImportError:
+                 pass
 
-            # Show feedback
+             Show feedback
             await callback_query.answer(MODES[mode_key]["answer"])
 
             # Build updated message
