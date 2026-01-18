@@ -64,12 +64,12 @@ def extract_file_info(filename, file_format, file_id=None):
 
 def parse_and_sort_files(file_data, mode='All'):
     """
-    Supported sorting modes:
-      • Quality     → only by quality
-      • Season      → only by season
-      • Episode     → only by episode
-      • All         → Season → Episode → Quality (classic)
-      • AllSQE      → Season → Quality → Episode (new style)
+    Supported modes:
+    • Quality     → quality only
+    • Season      → season only
+    • Episode     → episode only
+    • All         → Season → Episode → Quality     (classic)
+    • AllSQE      → Season → Quality → Episode     (new!)
     """
     series, non_series = [], []
 
@@ -85,25 +85,25 @@ def parse_and_sort_files(file_data, mode='All'):
         series = sorted(series, key=lambda x: (x['episode'], x['filename'].lower()))
     elif mode == 'AllSQE':
         series = sorted(series, key=lambda x: (x['season'], x['quality_order'], x['episode']))
-    else:  # 'All' default
+    else:  # 'All' - default/classic
         series = sorted(series, key=lambda x: (x['season'], x['episode'], x['quality_order']))
 
     non_series = sorted(non_series, key=lambda x: (x['filename'].lower(), x['quality_order']))
 
     return series, non_series
 
-# ==================== EXCLUDED COMMANDS LIST ====================
+# ==================== EXCLUDED COMMANDS ====================
 
 EXCLUDED_COMMANDS = [
     "ssequence", "esequence", "mode", "cancel",
     "add_dump", "rem_dump", "dump_info", "leaderboard"
 ]
 
-# ==================== FILE COLLECTOR (main handler) ====================
+# ==================== FILE COLLECTOR ====================
 
 @Client.on_message(
     filters.private &
-    (filters.document | filters.video | filters.audio | (filters.text & ~filters.command)) &
+    (filters.document | filters.video | filters.audio | filters.text) &
     ~filters.command(EXCLUDED_COMMANDS)
 )
 @check_ban
@@ -112,20 +112,20 @@ async def collect_files(client: Client, message: Message):
     try:
         user_id = message.from_user.id
 
-        # Session must be started first with /ssequence
+        # If no active sequence session
         if user_id not in user_sessions:
             if message.document or message.video or message.audio:
                 await handle_floodwait(
                     message.reply_text,
                     "Usᴇ /ssequence ғɪʀsᴛ ᴛʜᴇɴ sᴇɴᴅ ᴛʜᴇ ғɪʟᴇ(s)."
                 )
-            return  # ← Do NOT create session automatically
+            return
 
         session = user_sessions[user_id]
         files = session['files']
         added_this_time = 0
 
-        # Text lines as filenames
+        # Text as filenames
         if message.text and not message.text.startswith("/"):
             for line in filter(None, map(str.strip, message.text.splitlines())):
                 files.append({'filename': line, 'format': 'text'})
@@ -142,10 +142,8 @@ async def collect_files(client: Client, message: Message):
 
         # Videos
         if message.video:
-            filename = (
-                message.video.file_name or
-                (message.caption if message.caption else f"video_{message.video.file_unique_id}.mp4")
-            )
+            filename = message.video.file_name or \
+                       (message.caption if message.caption else f"video_{message.video.file_unique_id}.mp4")
             files.append({
                 'filename': filename,
                 'format': 'video',
@@ -153,7 +151,7 @@ async def collect_files(client: Client, message: Message):
             })
             added_this_time += 1
 
-        # Audio (optional, remove if you don't need it)
+        # Audio (optional - remove if not needed)
         if message.audio:
             filename = message.audio.file_name or f"audio_{message.audio.file_unique_id}"
             files.append({
@@ -168,14 +166,14 @@ async def collect_files(client: Client, message: Message):
 
         current_total = len(files)
 
-        # ─── Debounce notification logic ──────────────────────────────
+        # ─── DEBOUNCE LOGIC ───────────────────────────────────────
         if user_id in pending_notifications:
             old_task = pending_notifications[user_id].get('timer')
             if old_task and not old_task.done():
                 old_task.cancel()
 
         async def send_debounced_notification():
-            await asyncio.sleep(2.3)  # debounce window (adjust 1.8–3.0 sec)
+            await asyncio.sleep(2.3)  # 2.3 seconds debounce window
 
             if user_id in user_sessions and len(user_sessions[user_id]['files']) == current_total:
                 current_mode = session.get('mode', 'All')
@@ -209,13 +207,10 @@ async def collect_files(client: Client, message: Message):
 
     except Exception as e:
         logger.error(f"Error in collect_files: {e}")
-        await handle_floodwait(
-            message.reply_text,
-            "❌ An error occurred while processing file."
-        )
+        await handle_floodwait(message.reply_text, "❌ An error occurred while processing file.")
 
 
-# ==================== START SEQUENCE COMMAND ====================
+# ==================== START SEQUENCE ====================
 
 @Client.on_message(filters.command("ssequence") & filters.private)
 @check_ban
@@ -236,7 +231,7 @@ async def arrange_cmd(client: Client, message: Message):
         await handle_floodwait(message.reply_text, "❌ Aɴ ᴇʀʀᴏʀ ᴏᴄᴄᴜʀʀᴇᴅ. Pʟᴇᴀsᴇ ᴛʀʏ ᴀɢᴀɪɴ.")
 
 
-# ==================== MODE SELECTION COMMAND ====================
+# ==================== MODE COMMAND ====================
 
 @Client.on_message(filters.command("mode") & filters.private)
 @check_ban
@@ -272,7 +267,7 @@ async def mode_cmd(client: Client, message: Message):
         await handle_floodwait(message.reply_text, "❌ Aɴ ᴇʀʀᴏʀ ᴏᴄᴄᴜʀʀᴇᴅ. Pʟᴇᴀsᴇ ᴛʀʏ ᴀɢᴀɪɴ.")
 
 
-# ==================== ESEQUENCE - SEND SORTED FILES ====================
+# ==================== ESEQUENCE ====================
 
 @Client.on_message(filters.command("esequence") & filters.private)
 @check_ban
@@ -436,7 +431,6 @@ async def end_cmd(client: Client, message: Message):
             else:
                 raise send_error
 
-        # Update user stats
         await Seishiro.col.update_one(
             {"_id": int(user_id)},
             {
@@ -456,7 +450,7 @@ async def end_cmd(client: Client, message: Message):
         await handle_floodwait(message.reply_text, f"❌ Aɴ ᴇʀʀᴏʀ ᴏᴄᴄᴜʀʀᴇᴅ: {str(e)}")
 
 
-# ==================== CANCEL COMMAND ====================
+# ==================== CANCEL ====================
 
 @Client.on_message(filters.command("cancel") & filters.private)
 @check_ban
@@ -466,7 +460,6 @@ async def cancel_cmd(client: Client, message: Message):
         user_id = message.from_user.id
 
         if user_id in user_sessions:
-            # Cleanup pending debounce notification
             if user_id in pending_notifications:
                 task = pending_notifications[user_id].get('timer')
                 if task and not task.done():
@@ -525,12 +518,11 @@ async def add_dump_cmd(client: Client, message: Message):
             if channel_id > 0:
                 await handle_floodwait(
                     message.reply_text,
-                    "❌ Cannot set a private chat as dump channel. Use negative channel ID.",
+                    "❌ Cannot set a private chat as dump channel. Use negative ID.",
                     parse_mode=ParseMode.HTML
                 )
                 return
 
-            # Test bot permissions
             test_msg = await handle_floodwait(
                 client.send_message,
                 chat_id=channel_id,
@@ -542,7 +534,7 @@ async def add_dump_cmd(client: Client, message: Message):
         except Exception as e:
             await handle_floodwait(
                 message.reply_text,
-                f"❌ Error: Cannot access channel.\nMake sure bot is admin.\n\n{str(e)}",
+                f"❌ Cannot connect to channel.\nMake sure bot is admin.\n\n{str(e)}",
                 parse_mode=ParseMode.HTML
             )
             return
@@ -551,9 +543,7 @@ async def add_dump_cmd(client: Client, message: Message):
 
         await handle_floodwait(
             message.reply_text,
-            f"✅ Dump channel saved!\n"
-            f"Channel ID: <code>{channel_id}</code>\n\n"
-            f"Now use <code>/esequence</code> to send files there automatically.",
+            f"✅ Dump channel saved!\nID: <code>{channel_id}</code>\n\nUse /esequence to send files there.",
             parse_mode=ParseMode.HTML
         )
 
@@ -575,11 +565,9 @@ async def rem_dump_cmd(client: Client, message: Message):
             return
 
         await Seishiro.remove_dump_channel(user_id)
-
         await handle_floodwait(
             message.reply_text,
-            f"✅ Dump channel removed!\n"
-            f"Previous ID: <code>{current}</code>",
+            f"✅ Dump channel removed!\nOld ID: <code>{current}</code>",
             parse_mode=ParseMode.HTML
         )
     except Exception as e:
@@ -604,26 +592,23 @@ async def dump_info_cmd(client: Client, message: Message):
 
         try:
             chat = await client.get_chat(dump_channel)
-            text = (
+            await handle_floodwait(
+                message.reply_text,
                 f"📍 **Your Dump Channel:**\n\n"
                 f"Name: <b>{chat.title}</b>\n"
                 f"ID: <code>{dump_channel}</code>\n"
                 f"Username: @{chat.username if chat.username else 'N/A'}\n\n"
-                f"Use /rem_dump to remove it."
+                f"Use /rem_dump to remove.",
+                parse_mode=ParseMode.HTML
             )
         except:
-            text = (
+            await handle_floodwait(
+                message.reply_text,
                 f"📍 **Your Dump Channel:**\n\n"
                 f"ID: <code>{dump_channel}</code>\n\n"
-                f"Use /rem_dump to remove it.\n"
-                f"(Bot couldn't fetch channel title – make sure it's accessible)"
+                f"Use /rem_dump to remove.\n(Couldn't fetch title)",
+                parse_mode=ParseMode.HTML
             )
-
-        await handle_floodwait(
-            message.reply_text,
-            text,
-            parse_mode=ParseMode.HTML
-        )
 
     except Exception as e:
         logger.error(f"Error in dump_info: {e}")
