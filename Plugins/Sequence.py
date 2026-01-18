@@ -173,7 +173,7 @@ async def collect_files(client: Client, message: Message):
                 old_task.cancel()
 
         async def send_debounced_notification():
-            await asyncio.sleep(2.3)  # 2.3 seconds debounce window
+            await asyncio.sleep(2.3)  # debounce window
 
             if user_id in user_sessions and len(user_sessions[user_id]['files']) == current_total:
                 current_mode = session.get('mode', 'All')
@@ -528,26 +528,8 @@ async def add_dump_cmd(client: Client, message: Message):
                 chat_id=channel_id,
                 text="✅ Dump channel connected successfully!"
             )
-            await asyncio.sleep(2)
-            await test_msg.delete()
-
-        except Exception as e:
-            await handle_floodwait(
-                message.reply_text,
-                f"❌ Cannot connect to channel.\nMake sure bot is admin.\n\n{str(e)}",
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        await Seishiro.set_dump_channel(user_id, channel_id)
-
-        await handle_floodwait(
-            message.reply_text,
-            f"✅ Dump channel saved!\nID: <code>{channel_id}</code>\n\nUse /esequence to send files there.",
-            parse_mode=ParseMode.HTML
-        )
-
-    except Exception as e:
+     
+except Exception as e:
         logger.error(f"Error in add_dump: {e}")
         await handle_floodwait(message.reply_text, f"❌ Error: {str(e)}", parse_mode=ParseMode.HTML)
 
